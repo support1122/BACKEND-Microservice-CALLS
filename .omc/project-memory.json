@@ -1,0 +1,144 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1774680368307,
+  "projectRoot": "/home/bsc/Codding/DEPLOY/deploy v1/flashfire-website-backend/Microservice",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": ">=20.0.0",
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "fastify",
+        "version": "5.3.3",
+        "category": "backend"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": "Node.js 20.0.0"
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "npm test",
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "start": "node src/server.js",
+      "dev": "node --watch src/server.js",
+      "test": "node --test tests/**/*.test.js",
+      "test:unit": "node --test tests/unit/*.test.js",
+      "test:integration": "node --test tests/integration/*.test.js",
+      "health": "curl -s http://localhost:4000/health | node -e \"process.stdin.resume();process.stdin.on('data',d=>console.log(JSON.parse(d)))\""
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "scripts",
+      "src",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1774680368292,
+      "keyFiles": [
+        "backfill-reminders.js"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 1,
+      "lastAccessed": 1774680368292,
+      "keyFiles": [
+        "server.js"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1774680368301,
+      "keyFiles": [
+        "live-test.js"
+      ]
+    },
+    "src/config": {
+      "path": "src/config",
+      "purpose": "Configuration files",
+      "fileCount": 1,
+      "lastAccessed": 1774680368303,
+      "keyFiles": [
+        "env.js"
+      ]
+    },
+    "src/models": {
+      "path": "src/models",
+      "purpose": "Data models",
+      "fileCount": 6,
+      "lastAccessed": 1774680368304,
+      "keyFiles": [
+        "BdaAttendance.js",
+        "CampaignBooking.js",
+        "ReminderError.js"
+      ]
+    },
+    "src/routes": {
+      "path": "src/routes",
+      "purpose": "Route handlers",
+      "fileCount": 3,
+      "lastAccessed": 1774680368304,
+      "keyFiles": [
+        "debug.js",
+        "health.js",
+        "webhook.js"
+      ]
+    },
+    "src/services": {
+      "path": "src/services",
+      "purpose": "Business logic services",
+      "fileCount": 4,
+      "lastAccessed": 1774680368305,
+      "keyFiles": [
+        "CircuitBreaker.js",
+        "DiscordService.js",
+        "TwilioService.js"
+      ]
+    },
+    "src/utils": {
+      "path": "src/utils",
+      "purpose": "Utility functions",
+      "fileCount": 3,
+      "lastAccessed": 1774680368305,
+      "keyFiles": [
+        "logger.js",
+        "phone.js",
+        "timezone.js"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
