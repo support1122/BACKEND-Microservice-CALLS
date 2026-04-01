@@ -14,14 +14,14 @@ class UnifiedScheduler {
    * @param {Object} deps.callHandler
    * @param {Object} deps.whatsAppHandler
    * @param {Object} deps.discordReminderHandler
-   * @param {Object} deps.bdaHandler
+   * @param {Object|null} [deps.bdaHandler] Reserved / unused; BDA polling runs on main backend only
    * @param {Object} deps.logger
    */
   constructor({ callHandler, whatsAppHandler, discordReminderHandler, bdaHandler, logger }) {
     this._callHandler = callHandler;
     this._whatsAppHandler = whatsAppHandler;
     this._discordReminderHandler = discordReminderHandler;
-    this._bdaHandler = bdaHandler;
+    this._bdaHandler = bdaHandler || null;
     this._log = logger.child({ component: 'UnifiedScheduler' });
 
     /** @type {Map<string, { timerId: NodeJS.Timeout, type: string, scheduledFor: Date }>} */
