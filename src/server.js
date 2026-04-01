@@ -1,8 +1,8 @@
 'use strict';
 
-const Fastify = require('fastify');
-const cors = require('@fastify/cors');
-const compress = require('@fastify/compress');
+const express = require('express');
+const cors = require('cors');
+const compression = require('compression');
 const env = require('./config/env');
 const { connect, disconnect } = require('./db/connection');
 const logger = require('./utils/logger');
@@ -27,26 +27,15 @@ const debugRoutes = require('./routes/debug');
 
 const startTime = Date.now();
 
-async function buildApp() {
-  const app = Fastify({
-    logger: false, // we use our own pino logger
-    trustProxy: true,
-    bodyLimit: 1048576, // 1MB
-    caseSensitive: false,
-  });
+function buildApp() {
+  const app = express();
 
-  await app.register(cors, { origin: true, credentials: true });
-  await app.register(compress);
-
-  // Parse URL-encoded bodies (Twilio sends form data)
-  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (req, body, done) => {
-    try {
-      const parsed = Object.fromEntries(new URLSearchParams(body));
-      done(null, parsed);
-    } catch (err) {
-      done(err);
-    }
-  });
+  // Middleware
+  app.set('trust proxy', true);
+  app.use(cors({ origin: true, credentials: true }));
+  app.use(compression());
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Initialize services
   const twilioService = new TwilioService({
@@ -76,7 +65,7 @@ async function buildApp() {
   const whatsAppHandler = new WhatsAppHandler({ watiService, discordService, logger });
   const discordReminderHandler = new DiscordReminderHandler({ discordService, logger });
 
-  // Initialize scheduler (BDA absent polling lives on main flashfire-website-backend only)
+  // Initialize scheduler
   const scheduler = new UnifiedScheduler({
     callHandler,
     whatsAppHandler,
@@ -85,22 +74,26 @@ async function buildApp() {
     logger,
   });
 
-  // Register routes
+  // Store references on app for shutdown access
+  app.scheduler = scheduler;
+
+  // Route options shared across all route files
   const routeOpts = { scheduler, callHandler, whatsAppHandler, discordReminderHandler, discordService, startTime };
-  await app.register(healthRoutes, routeOpts);
-  await app.register(webhookRoutes, routeOpts);
-  await app.register(debugRoutes, routeOpts);
+
+  // Register routes
+  healthRoutes(app, routeOpts);
+  webhookRoutes(app, routeOpts);
+  debugRoutes(app, routeOpts);
 
   // Root
-  app.get('/', async () => ({
-    service: 'microservice-arc',
-    version: '1.0.0',
-    status: 'running',
-    purpose: 'Precision reminders: Calls, WhatsApp, Discord (BDA attendance on main backend)',
-  }));
-
-  // Store references for shutdown
-  app.decorate('scheduler', scheduler);
+  app.get('/', (req, res) => {
+    res.json({
+      service: 'microservice-arc',
+      version: '1.0.0',
+      status: 'running',
+      purpose: 'Precision reminders: Calls, WhatsApp, Discord (BDA attendance on main backend)',
+    });
+  });
 
   return app;
 }
@@ -111,8 +104,8 @@ async function start() {
     await connect();
     logger.info('MongoDB connected');
 
-    // 2. Build Fastify app
-    const app = await buildApp();
+    // 2. Build Express app
+    const app = buildApp();
 
     // 3. Start scheduler (preloads timers from DB)
     await app.scheduler.start();
@@ -120,14 +113,37 @@ async function start() {
 
     // 4. Listen
     const port = env.PORT;
-    await app.listen({ port, host: '0.0.0.0' });
-    logger.info({ port }, `Microservice-ARC running on port ${port}`);
+    const server = app.listen(port, '0.0.0.0', () => {
+      logger.info({ port }, `Microservice-ARC running on port ${port}`);
+    });
+
+    // ── Self-ping keep-alive (prevents Render free-tier cold sleep) ──
+    const SELF_PING_INTERVAL_MS = 4 * 60 * 1000; // every 4 minutes
+    const selfPingUrl = process.env.RENDER_EXTERNAL_URL
+      ? `${process.env.RENDER_EXTERNAL_URL}/health`
+      : `http://localhost:${port}/health`;
+
+    const selfPingTimer = setInterval(async () => {
+      try {
+        const res = await fetch(selfPingUrl, { signal: AbortSignal.timeout(10000) });
+        if (res.ok) {
+          logger.debug({ url: selfPingUrl }, 'Self-ping OK');
+        } else {
+          logger.warn({ status: res.status }, 'Self-ping non-OK response');
+        }
+      } catch (err) {
+        logger.warn({ err: err.message }, 'Self-ping failed (will retry next cycle)');
+      }
+    }, SELF_PING_INTERVAL_MS);
+
+    logger.info({ intervalMs: SELF_PING_INTERVAL_MS, url: selfPingUrl }, 'Self-ping keep-alive started');
 
     // Graceful shutdown
     const shutdown = async (signal) => {
       logger.info({ signal }, 'Shutting down...');
+      clearInterval(selfPingTimer);
       await app.scheduler.stop();
-      await app.close();
+      server.close();
       await disconnect();
       logger.info('Graceful shutdown complete');
       process.exit(0);
