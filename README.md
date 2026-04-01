@@ -1,6 +1,6 @@
 # Microservice-ARC (Automated Reminder Controller)
 
-Precision reminder microservice for **Calls**, **WhatsApp**, **BDA Attendance**, and **Discord** notifications. Built with **Fastify** for maximum throughput, offloading time-critical reminder operations from the main Express server.
+Precision reminder microservice for **Calls**, **WhatsApp**, and **Discord** notifications. **BDA attendance** (extension APIs + absent polling) runs on the main **flashfire-website-backend** only. Built with **Fastify** for maximum throughput, offloading time-critical reminder operations from the main Express server.
 
 ## Architecture
 
@@ -9,16 +9,15 @@ Calendly Webhook (shared)
        │
        ├── Main Server (Express) → Workflows, Campaigns, CRM, Payments, etc.
        │
-       └── Microservice-ARC (Fastify) → Calls, WhatsApp, BDA, Discord reminders
+       └── Microservice-ARC (Fastify) → Calls, WhatsApp, Discord reminders
                 │
-                ├── UnifiedScheduler (precision setTimeout timers)
-                │   ├── CallHandler → Twilio
-                │   ├── WhatsAppHandler → WATI
-                │   ├── DiscordReminderHandler → Discord Webhooks
-                │   └── Safety-net poll (30s) for missed items
-                │
-                └── BdaAbsentDetector (60s poll)
-                    └── Discord notifications
+                └── UnifiedScheduler (precision setTimeout timers)
+                    ├── CallHandler → Twilio
+                    ├── WhatsAppHandler → WATI
+                    ├── DiscordReminderHandler → Discord Webhooks
+                    └── Safety-net poll (30s) for missed items
+
+Main backend (Express) → BDA extension `/api/bda-attendance/*` + BDA absent polling (`UnifiedScheduler` / `BdaAbsentScheduler`)
 ```
 
 ## Key Design Decisions
@@ -28,7 +27,7 @@ Calendly Webhook (shared)
 3. **DB-based scheduling** — No Redis dependency. MongoDB stores all reminder state with atomic status transitions (`pending → processing → completed/failed`)
 4. **Safety-net polling** — 30-second backup sweep catches any timers that were missed (process restart, etc.)
 5. **Circuit breakers** — On Twilio, WATI, and Discord APIs to prevent cascade failures
-6. **Same Calendly webhook** — This service processes only call/WA/BDA/Discord reminder parts. Forward the same webhook to both services.
+6. **Same Calendly webhook** — This service processes only call/WA/Discord reminder scheduling. Forward the same webhook to both services.
 
 ## Setup
 
@@ -127,4 +126,5 @@ curl -X POST http://localhost:4000/api/debug/test-discord \
 | WhatsApp (2hour) | 2 hours before meeting |
 | WhatsApp (24hour) | 24 hours before meeting |
 | Discord | 5 min before meeting (configurable) |
-| BDA Absent Check | 60s after meeting start |
+
+BDA absent detection is handled by the main backend, not this microservice.

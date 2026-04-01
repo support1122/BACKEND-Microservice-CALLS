@@ -16,7 +16,6 @@ const DiscordService = require('./services/DiscordService');
 const CallHandler = require('./handlers/CallHandler');
 const WhatsAppHandler = require('./handlers/WhatsAppHandler');
 const DiscordReminderHandler = require('./handlers/DiscordReminderHandler');
-const BdaHandler = require('./handlers/BdaHandler');
 
 // Scheduler
 const UnifiedScheduler = require('./scheduler/UnifiedScheduler');
@@ -76,14 +75,13 @@ async function buildApp() {
   const callHandler = new CallHandler({ twilioService, discordService, logger });
   const whatsAppHandler = new WhatsAppHandler({ watiService, discordService, logger });
   const discordReminderHandler = new DiscordReminderHandler({ discordService, logger });
-  const bdaHandler = new BdaHandler({ discordService, logger });
 
-  // Initialize scheduler
+  // Initialize scheduler (BDA absent polling lives on main flashfire-website-backend only)
   const scheduler = new UnifiedScheduler({
     callHandler,
     whatsAppHandler,
     discordReminderHandler,
-    bdaHandler,
+    bdaHandler: null,
     logger,
   });
 
@@ -98,12 +96,11 @@ async function buildApp() {
     service: 'microservice-arc',
     version: '1.0.0',
     status: 'running',
-    purpose: 'Precision reminders: Calls, WhatsApp, BDA, Discord',
+    purpose: 'Precision reminders: Calls, WhatsApp, Discord (BDA attendance on main backend)',
   }));
 
   // Store references for shutdown
   app.decorate('scheduler', scheduler);
-  app.decorate('bdaHandler', bdaHandler);
 
   return app;
 }
@@ -121,11 +118,7 @@ async function start() {
     await app.scheduler.start();
     logger.info('UnifiedScheduler started — timers preloaded');
 
-    // 4. Start BDA absent polling
-    app.bdaHandler.startPolling(60000);
-    logger.info('BDA absent polling started (60s interval)');
-
-    // 5. Listen
+    // 4. Listen
     const port = env.PORT;
     await app.listen({ port, host: '0.0.0.0' });
     logger.info({ port }, `Microservice-ARC running on port ${port}`);
@@ -133,7 +126,6 @@ async function start() {
     // Graceful shutdown
     const shutdown = async (signal) => {
       logger.info({ signal }, 'Shutting down...');
-      app.bdaHandler.stopPolling();
       await app.scheduler.stop();
       await app.close();
       await disconnect();
