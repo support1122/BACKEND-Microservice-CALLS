@@ -94,8 +94,32 @@ class BdaHandler {
   /*  Helpers                                                           */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Safely extract BDA email from claimedBy field.
+   * claimedBy can be a plain string OR an object like { email, name, claimedAt }.
+   */
+  _extractBdaEmail(claimedBy) {
+    if (!claimedBy) return null;
+    if (typeof claimedBy === 'string') return claimedBy;
+    if (typeof claimedBy === 'object') {
+      // Handle { email: '...', name: '...', claimedAt: '...' } shape
+      const email = claimedBy.email || claimedBy.bdaEmail || null;
+      if (typeof email === 'string' && email.length > 0) return email;
+      // If email is null/empty, try name as fallback identifier
+      const name = claimedBy.name || claimedBy.bdaName || null;
+      if (typeof name === 'string' && name.length > 0) return name;
+    }
+    return null;
+  }
+
   async _checkAndNotify(booking) {
-    const { bookingId, claimedBy } = booking;
+    const { bookingId } = booking;
+    const bdaEmail = this._extractBdaEmail(booking.claimedBy);
+
+    if (!bdaEmail) {
+      this._log.warn({ bookingId, claimedBy: booking.claimedBy }, 'Cannot extract BDA email from claimedBy — skipping');
+      return;
+    }
 
     // Check if an attendance record already exists
     const existing = await BdaAttendance.findOne({ bookingId }).lean();
@@ -116,7 +140,7 @@ class BdaHandler {
       await BdaAttendance.create({
         attendanceId: `att_${bookingId}_${Date.now()}`,
         bookingId,
-        bdaEmail: claimedBy,
+        bdaEmail,
         status: 'absent',
         meetingScheduledStart: booking.scheduledEventStartTime,
         meetingScheduledEnd: booking.scheduledEventEndTime,
@@ -124,12 +148,22 @@ class BdaHandler {
       });
     }
 
+    // Format meeting start safely
+    let meetingStartStr = 'Unknown';
+    if (booking.scheduledEventStartTime) {
+      try {
+        meetingStartStr = booking.scheduledEventStartTime instanceof Date
+          ? booking.scheduledEventStartTime.toISOString()
+          : String(booking.scheduledEventStartTime);
+      } catch { /* keep 'Unknown' */ }
+    }
+
     // Send Discord notification
     await this._discord.sendBdaAbsent({
       bookingId,
-      bdaEmail: claimedBy,
+      bdaEmail,
       clientName: booking.clientName || 'Unknown',
-      meetingStart: booking.scheduledEventStartTime?.toISOString?.() || String(booking.scheduledEventStartTime),
+      meetingStart: meetingStartStr,
     });
 
     // Mark as notified
@@ -138,7 +172,7 @@ class BdaHandler {
       { $set: { discordNotified: true } },
     );
 
-    this._log.info({ bookingId, bdaEmail: claimedBy }, 'BDA absent notification sent');
+    this._log.info({ bookingId, bdaEmail }, 'BDA absent notification sent');
   }
 }
 
