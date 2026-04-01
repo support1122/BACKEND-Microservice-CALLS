@@ -1,7 +1,7 @@
 {
   "name": "microservice-arc",
   "version": "1.0.0",
-  "description": "Precision reminder microservice for Calls, WhatsApp, BDA & Discord — Fastify + MongoDB",
+  "description": "Precision reminder microservice for Calls, WhatsApp, BDA & Discord — Express + MongoDB",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -15,9 +15,9 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "fastify": "^5.3.3",
-    "@fastify/cors": "^11.0.1",
-    "@fastify/compress": "^8.0.2",
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "compression": "^1.7.5",
     "mongoose": "^8.16.0",
     "twilio": "^5.9.0",
     "axios": "^1.10.0",

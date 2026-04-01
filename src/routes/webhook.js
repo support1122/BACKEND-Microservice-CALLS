@@ -6,14 +6,14 @@ const { normalizePhoneForReminders, isValidPhone } = require('../utils/phone');
 const { minutesBefore, detectTimezoneFromPhone } = require('../utils/timezone');
 const logger = require('../utils/logger');
 
-async function webhookRoutes(fastify, opts) {
-  const { callHandler, whatsAppHandler, discordReminderHandler, scheduler } = opts;
+function webhookRoutes(app, opts) {
+  const { callHandler, whatsAppHandler, discordReminderHandler, scheduler, discordService } = opts;
 
   // Calendly webhook — only processes call/WA/BDA/Discord reminder scheduling
-  fastify.post('/calendly-webhook', async (req, reply) => {
+  app.post('/calendly-webhook', async (req, res) => {
     const body = req.body;
     if (!body || !body.event || !body.payload) {
-      return reply.code(400).send({ error: 'Invalid payload' });
+      return res.status(400).json({ error: 'Invalid payload' });
     }
 
     const { event, payload } = body;
@@ -42,7 +42,7 @@ async function webhookRoutes(fastify, opts) {
           bookingId, phone, clientName, clientEmail,
           meetingStartISO, meetingLink, rescheduleLink, inviteeTimezone,
         });
-        return { status: 'scheduled', bookingId };
+        return res.json({ status: 'scheduled', bookingId });
 
       } else if (event === 'invitee.rescheduled' || event === 'invitee.canceled') {
         // Cancel existing reminders first
@@ -65,21 +65,21 @@ async function webhookRoutes(fastify, opts) {
             inviteeTimezone,
             source: 'reschedule',
           });
-          return { status: 'rescheduled', bookingId };
+          return res.json({ status: 'rescheduled', bookingId });
         }
 
-        return { status: 'cancelled', bookingId };
+        return res.json({ status: 'cancelled', bookingId });
       }
 
-      return { status: 'ignored', event };
+      return res.json({ status: 'ignored', event });
     } catch (err) {
       logger.error({ err, bookingId, event }, 'Webhook processing failed');
-      return reply.code(500).send({ error: 'Processing failed', message: err.message });
+      return res.status(500).json({ error: 'Processing failed', message: err.message });
     }
   });
 
   // Twilio call status callback
-  fastify.post('/call-status', async (req, reply) => {
+  app.post('/call-status', async (req, res) => {
     const { CallSid, CallStatus, To, From, AnsweredBy, CallDuration, Timestamp } = req.body || {};
     logger.info({ CallSid, CallStatus, To, From, AnsweredBy, CallDuration }, 'Call status update');
 
@@ -135,7 +135,6 @@ async function webhookRoutes(fastify, opts) {
         logger.warn({ err: lookupErr.message, CallSid }, 'Could not lookup scheduled call');
       }
 
-      const { discordService } = opts;
       if (discordService) {
         await discordService.sendCallStatus({
           phoneNumber: To,
@@ -153,11 +152,11 @@ async function webhookRoutes(fastify, opts) {
     }
 
     // Twilio expects TwiML or 200
-    reply.type('text/xml').send('<Response></Response>');
+    res.type('text/xml').send('<Response></Response>');
   });
 
   // Twilio IVR response
-  fastify.post('/twilio-ivr', async (req, reply) => {
+  app.post('/twilio-ivr', (req, res) => {
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Hello! This is a reminder that your meeting is starting soon. Please join the meeting link sent to your email or WhatsApp. Press 1 to confirm, or press 2 to reschedule.</Say>
@@ -166,10 +165,10 @@ async function webhookRoutes(fastify, opts) {
   </Gather>
   <Say voice="alice">We didn't receive any input. Goodbye!</Say>
 </Response>`;
-    reply.type('text/xml').send(twiml);
+    res.type('text/xml').send(twiml);
   });
 
-  fastify.post('/twilio-ivr-response', async (req, reply) => {
+  app.post('/twilio-ivr-response', (req, res) => {
     const digit = req.body?.Digits;
     let twiml;
     if (digit === '1') {
@@ -179,7 +178,7 @@ async function webhookRoutes(fastify, opts) {
     } else {
       twiml = '<Response><Say voice="alice">Invalid input. Goodbye!</Say></Response>';
     }
-    reply.type('text/xml').send(twiml);
+    res.type('text/xml').send(twiml);
   });
 
   // --- Helpers ---

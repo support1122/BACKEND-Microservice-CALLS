@@ -4,15 +4,15 @@ const { normalizePhoneForReminders } = require('../utils/phone');
 const { formatMeetingTime } = require('../utils/timezone');
 const logger = require('../utils/logger');
 
-async function debugRoutes(fastify, opts) {
+function debugRoutes(app, opts) {
   const { callHandler, whatsAppHandler, discordReminderHandler, scheduler, discordService } = opts;
 
   // Manual test call scheduling
-  fastify.post('/api/debug/test-call', async (req, reply) => {
+  app.post('/api/debug/test-call', async (req, res) => {
     const { phoneNumber, meetingStartISO, inviteeName, inviteeEmail, meetingLink, bookingId } = req.body || {};
 
     if (!phoneNumber || !meetingStartISO) {
-      return reply.code(400).send({ error: 'phoneNumber and meetingStartISO required' });
+      return res.status(400).json({ error: 'phoneNumber and meetingStartISO required' });
     }
 
     const normalized = normalizePhoneForReminders(phoneNumber);
@@ -30,15 +30,15 @@ async function debugRoutes(fastify, opts) {
 
     if (doc) scheduler.scheduleCall(doc);
     logger.info({ callId: doc?.callId, phoneNumber: normalized }, 'Debug call scheduled');
-    return { status: 'scheduled', call: doc };
+    res.json({ status: 'scheduled', call: doc });
   });
 
   // Manual test WhatsApp reminder
-  fastify.post('/api/debug/test-whatsapp', async (req, reply) => {
+  app.post('/api/debug/test-whatsapp', async (req, res) => {
     const { phoneNumber, meetingStartISO, clientName, reminderType } = req.body || {};
 
     if (!phoneNumber || !meetingStartISO) {
-      return reply.code(400).send({ error: 'phoneNumber and meetingStartISO required' });
+      return res.status(400).json({ error: 'phoneNumber and meetingStartISO required' });
     }
 
     const normalized = normalizePhoneForReminders(phoneNumber);
@@ -56,15 +56,15 @@ async function debugRoutes(fastify, opts) {
     });
 
     if (doc) scheduler.scheduleWhatsApp(doc);
-    return { status: 'scheduled', reminder: doc };
+    res.json({ status: 'scheduled', reminder: doc });
   });
 
   // Manual test Discord reminder
-  fastify.post('/api/debug/test-discord', async (req, reply) => {
+  app.post('/api/debug/test-discord', async (req, res) => {
     const { meetingStartISO, clientName, clientEmail, meetingLink } = req.body || {};
 
     if (!meetingStartISO) {
-      return reply.code(400).send({ error: 'meetingStartISO required' });
+      return res.status(400).json({ error: 'meetingStartISO required' });
     }
 
     const doc = await discordReminderHandler.schedule({
@@ -78,26 +78,22 @@ async function debugRoutes(fastify, opts) {
     });
 
     if (doc) scheduler.scheduleDiscordReminder(doc);
-    return { status: 'scheduled', reminder: doc };
+    res.json({ status: 'scheduled', reminder: doc });
   });
 
   // Cancel all reminders for a booking
-  fastify.delete('/api/debug/cancel/:bookingId', async (req, reply) => {
+  app.delete('/api/debug/cancel/:bookingId', async (req, res) => {
     const { bookingId } = req.params;
     await scheduler.cancelAllForBooking(bookingId);
-    return { status: 'cancelled', bookingId };
+    res.json({ status: 'cancelled', bookingId });
   });
 
   // ─────────────────────────────────────────────────────────────────
   //  POST /send/temp — Fire ALL notification types at once for
   //  testing: Discord (all channels) + WhatsApp (real message).
   //  No actual Twilio calls are made.
-  //
-  //  Body params (all optional, sensible defaults):
-  //    clientName, clientEmail, phoneNumber, meetingStartISO,
-  //    bdaEmail, inviteeTimezone, sendWhatsApp (bool)
   // ─────────────────────────────────────────────────────────────────
-  fastify.post('/send/temp', async (req, reply) => {
+  app.post('/send/temp', async (req, res) => {
     const {
       clientName = 'Test Client',
       clientEmail = 'test@example.com',
@@ -121,7 +117,7 @@ async function debugRoutes(fastify, opts) {
     const callSid = `CA_TEST_${Date.now().toString(36)}`;
     const results = {};
 
-    // 0. New Meeting Booked notification — same format as CalendlyWebhookController
+    // 0. New Meeting Booked notification
     try {
       const bookingDetails = {
         'Booking ID': bookingId,
@@ -147,7 +143,7 @@ async function debugRoutes(fastify, opts) {
       results.meetingBooked = { success: false, error: err.message };
     }
 
-    // 1. Hot Lead / Meeting Reminder (with both client + India time)
+    // 1. Hot Lead / Meeting Reminder
     try {
       results.hotLead = await discordService.sendMeetReminder({
         clientName,
@@ -161,7 +157,7 @@ async function debugRoutes(fastify, opts) {
       results.hotLead = { success: false, error: err.message };
     }
 
-    // 2. Call Status — initiated (Discord only, NO real call)
+    // 2. Call Status — initiated
     try {
       results.callInitiated = await discordService.sendCallStatus({
         phoneNumber,
@@ -239,8 +235,8 @@ async function debugRoutes(fastify, opts) {
 
     // 7. BDA Duration — time spent in meeting
     try {
-      const joinTime = new Date(meetingStart.getTime() - 2 * 60 * 1000); // joined 2 min early
-      const leftTime = new Date(meetingStart.getTime() + 18 * 60 * 1000); // left after 18 min
+      const joinTime = new Date(meetingStart.getTime() - 2 * 60 * 1000);
+      const leftTime = new Date(meetingStart.getTime() + 18 * 60 * 1000);
       results.bdaDuration = await discordService.sendBdaDuration({
         bookingId,
         bdaEmail,
@@ -271,7 +267,6 @@ async function debugRoutes(fastify, opts) {
         });
 
         if (waDoc) {
-          // Execute immediately so the user sees the WhatsApp message right away
           await whatsAppHandler.execute(waDoc);
           results.whatsApp = { success: true, reminderId: waDoc.reminderId, phone: phoneNumber };
         } else {
@@ -290,7 +285,7 @@ async function debugRoutes(fastify, opts) {
 
     logger.info({ totalSent, totalFailed, results }, '/send/temp completed');
 
-    return {
+    res.json({
       status: totalFailed === 0 ? 'all_sent' : totalSent === 0 ? 'all_failed' : 'partial',
       totalSent,
       totalFailed,
@@ -309,7 +304,7 @@ async function debugRoutes(fastify, opts) {
         bdaDuration: !!discordService.webhooks.bdaDuration,
         meet2min: !!discordService.webhooks.meet2min,
       },
-    };
+    });
   });
 }
 

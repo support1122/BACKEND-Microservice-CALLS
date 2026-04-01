@@ -1,36 +1,40 @@
 'use strict';
 
-async function healthRoutes(fastify, opts) {
+function healthRoutes(app, opts) {
   const { scheduler, startTime } = opts;
 
-  fastify.get('/health', async (req, reply) => {
+  app.get('/health', (req, res) => {
     const stats = scheduler.getStats();
-    return {
+    res.json({
       status: 'ok',
       service: 'microservice-arc',
       uptime: Math.floor((Date.now() - startTime) / 1000),
       activeTimers: stats.activeTimers,
       byType: stats.byType,
       timestamp: new Date().toISOString(),
-    };
+    });
   });
 
-  fastify.get('/api/scheduler/stats', async (req, reply) => {
-    return scheduler.getStats();
+  app.get('/api/scheduler/stats', (req, res) => {
+    res.json(scheduler.getStats());
   });
 
-  fastify.get('/api/scheduler/upcoming', async (req, reply) => {
-    const ScheduledCall = require('../models/ScheduledCall');
-    const ScheduledWhatsAppReminder = require('../models/ScheduledWhatsAppReminder');
-    const ScheduledDiscordMeetReminder = require('../models/ScheduledDiscordMeetReminder');
+  app.get('/api/scheduler/upcoming', async (req, res) => {
+    try {
+      const ScheduledCall = require('../models/ScheduledCall');
+      const ScheduledWhatsAppReminder = require('../models/ScheduledWhatsAppReminder');
+      const ScheduledDiscordMeetReminder = require('../models/ScheduledDiscordMeetReminder');
 
-    const [calls, whatsapp, discord] = await Promise.all([
-      ScheduledCall.find({ status: 'pending' }).sort({ scheduledFor: 1 }).limit(10).lean(),
-      ScheduledWhatsAppReminder.find({ status: 'pending' }).sort({ scheduledFor: 1 }).limit(10).lean(),
-      ScheduledDiscordMeetReminder.find({ status: 'pending' }).sort({ scheduledFor: 1 }).limit(10).lean(),
-    ]);
+      const [calls, whatsapp, discord] = await Promise.all([
+        ScheduledCall.find({ status: 'pending' }).sort({ scheduledFor: 1 }).limit(10).lean(),
+        ScheduledWhatsAppReminder.find({ status: 'pending' }).sort({ scheduledFor: 1 }).limit(10).lean(),
+        ScheduledDiscordMeetReminder.find({ status: 'pending' }).sort({ scheduledFor: 1 }).limit(10).lean(),
+      ]);
 
-    return { calls, whatsapp, discord };
+      res.json({ calls, whatsapp, discord });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 }
 

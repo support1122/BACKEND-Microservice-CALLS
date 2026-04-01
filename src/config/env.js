@@ -36,5 +36,7 @@ module.exports = {
   SCHEDULER_STUCK_PROCESSING_MS: parseInt(process.env.SCHEDULER_STUCK_PROCESSING_MS, 10) || 120000,
   REMINDER_DRIFT_WARN_MS: parseInt(process.env.REMINDER_DRIFT_WARN_MS, 10) || 5000,
 
+  RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL || null,
+
   NODE_ENV: process.env.NODE_ENV || 'development',
 };
