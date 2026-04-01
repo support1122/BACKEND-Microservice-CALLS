@@ -59,6 +59,11 @@ class WhatsAppHandler {
         ? new Date()
         : minutesBefore(meetingStartISO, offsetMinutes);
 
+    if (!scheduledFor) {
+      this._log.warn({ bookingId, meetingStartISO, reminderType }, 'Invalid meeting start time, skipping WA reminder');
+      return null;
+    }
+
     const reminderId = `wa_${bookingId}_${reminderType}_${Date.now()}`;
 
     const doc = await ScheduledWhatsAppReminder.create({

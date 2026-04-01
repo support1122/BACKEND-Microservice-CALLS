@@ -80,11 +80,13 @@ async function webhookRoutes(fastify, opts) {
 
   // Twilio call status callback
   fastify.post('/call-status', async (req, reply) => {
-    const { CallSid, CallStatus, To, From, AnsweredBy, CallDuration } = req.body || {};
-    logger.info({ CallSid, CallStatus, To, AnsweredBy }, 'Call status update');
+    const { CallSid, CallStatus, To, From, AnsweredBy, CallDuration, Timestamp } = req.body || {};
+    logger.info({ CallSid, CallStatus, To, From, AnsweredBy, CallDuration }, 'Call status update');
 
     if (CallSid) {
       const ScheduledCall = require('../models/ScheduledCall');
+
+      // Update status history
       await ScheduledCall.findOneAndUpdate(
         { twilioCallSid: CallSid },
         {
@@ -99,14 +101,53 @@ async function webhookRoutes(fastify, opts) {
         }
       );
 
+      // Lookup scheduled call for meeting info
+      let meetingInfo = {};
+      try {
+        const scheduledCall = await ScheduledCall.findOne({ twilioCallSid: CallSid }).lean();
+        if (scheduledCall) {
+          // Fix meetingTime if "Invalid DateTime" — re-derive from ISO date
+          let meetingTimeDisplay = scheduledCall.meetingTime || 'Unknown';
+          if (meetingTimeDisplay === 'Invalid DateTime' && scheduledCall.meetingStartISO) {
+            const { formatMeetingTime } = require('../utils/timezone');
+            const tz = scheduledCall.inviteeTimezone || scheduledCall.metadata?.inviteeTimezone || 'America/New_York';
+            meetingTimeDisplay = formatMeetingTime(scheduledCall.meetingStartISO, tz);
+          }
+
+          // Derive India time for team reference
+          let meetingTimeIndia = '';
+          if (scheduledCall.meetingStartISO) {
+            const { formatMeetingTime } = require('../utils/timezone');
+            meetingTimeIndia = formatMeetingTime(scheduledCall.meetingStartISO, 'Asia/Kolkata');
+          }
+
+          const combined = meetingTimeIndia
+            ? `${meetingTimeDisplay} | India: ${meetingTimeIndia}`
+            : meetingTimeDisplay;
+
+          meetingInfo = {
+            inviteeName: scheduledCall.inviteeName || 'Unknown',
+            inviteeEmail: scheduledCall.inviteeEmail || 'Unknown',
+            meetingTime: combined,
+          };
+        }
+      } catch (lookupErr) {
+        logger.warn({ err: lookupErr.message, CallSid }, 'Could not lookup scheduled call');
+      }
+
       const { discordService } = opts;
       if (discordService) {
         await discordService.sendCallStatus({
           phoneNumber: To,
+          fromNumber: From,
           callSid: CallSid,
           status: CallStatus,
+          inviteeName: meetingInfo.inviteeName,
+          inviteeEmail: meetingInfo.inviteeEmail,
+          meetingTime: meetingInfo.meetingTime,
           answeredBy: AnsweredBy,
-          duration: CallDuration,
+          duration: CallDuration ? parseInt(CallDuration) : undefined,
+          timestamp: Timestamp || new Date().toISOString(),
         });
       }
     }

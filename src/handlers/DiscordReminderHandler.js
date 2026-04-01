@@ -33,6 +33,10 @@ class DiscordReminderHandler {
     source = 'calendly',
   }) {
     const scheduledFor = minutesBefore(meetingStartISO, DISCORD_MEET_REMINDER_OFFSET_MINUTES);
+    if (!scheduledFor) {
+      this._log.warn({ bookingId, meetingStartISO }, 'Invalid meeting start time, skipping Discord reminder');
+      return null;
+    }
     const reminderId = `discord_${bookingId}_${Date.now()}`;
 
     const doc = await ScheduledDiscordMeetReminder.create({
@@ -80,9 +84,11 @@ class DiscordReminderHandler {
 
     try {
       const minutesUntil = Math.max(0, Math.round((new Date(claimed.meetingStartISO).getTime() - Date.now()) / 60000));
+      const formattedIndia = formatMeetingTime(claimed.meetingStartISO, 'Asia/Kolkata');
       await this._discord.sendMeetReminder({
         clientName: claimed.clientName,
         meetingTime: formattedTime,
+        meetingTimeIndia: formattedIndia,
         meetingLink: claimed.meetingLink,
         minutesUntil,
       });
