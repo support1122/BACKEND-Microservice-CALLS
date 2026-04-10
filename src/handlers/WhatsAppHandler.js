@@ -108,20 +108,23 @@ class WhatsAppHandler {
     }
 
     const deliveryDriftMs = Date.now() - new Date(claimed.scheduledFor).getTime();
-    const formattedTime = formatMeetingTime(
+    let meetingTimeWithTimezone = formatMeetingTime(
       claimed.meetingStartISO,
       claimed.timezone || 'Asia/Kolkata',
     );
+
+    if (!meetingTimeWithTimezone || /^unknown$/i.test(String(meetingTimeWithTimezone).trim())) {
+      meetingTimeWithTimezone = 'your scheduled time';
+    }
 
     // Parameters match parent app: {{1}}=name, {{2}}=date, {{3}}=time+tz, {{4}}=link, {{5}}=reschedule
     const meetingDate = claimed.meetingStartISO
       ? new Date(claimed.meetingStartISO).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
       : '';
-    const tzAbbr = claimed.timezone || 'IST';
     const templateParams = [
       claimed.clientName || 'Valued Client',                    // {{1}}
       meetingDate,                                               // {{2}}
-      `${formattedTime} ${tzAbbr}`,                             // {{3}}
+      meetingTimeWithTimezone,                                  // {{3}}
       claimed.meetingLink || 'Not Provided',                     // {{4}}
       claimed.rescheduleLink || 'https://calendly.com',          // {{5}}
     ];
