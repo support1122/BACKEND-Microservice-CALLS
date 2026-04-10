@@ -136,25 +136,36 @@ class DiscordService {
   /**
    * Send a hot-lead meeting notification to the 'hotLead' channel.
    * BDA team can confirm attendance by replying.
+   *
+   * If meetingTime / meetingTimeIndia are missing or "Unknown", we omit those
+   * lines and fall back to the simpler "your meet is in ~5 minutes" headline
+   * — never print "Time (Client): Unknown".
    */
   async sendMeetReminder({ clientName, meetingTime, meetingTimeIndia, meetingLink, minutesUntil, claimedBy }) {
     const claimedLine = claimedBy
       ? `**Assigned BDA:** ${claimedBy}`
       : '\u26A0\uFE0F **NOT CLAIMED**';
 
+    const isUsable = (v) =>
+      v != null && v !== '' && v !== 'Unknown' && !String(v).startsWith('Unknown') && v !== 'undefined';
+
+    const minutesLabel = Number.isFinite(minutesUntil) && minutesUntil > 0 ? minutesUntil : 5;
+
     const lines = [
-      `\u{1F525} **Hot Lead \u2014 Meeting in ~${minutesUntil} minutes**`,
+      `\u{1F525} **Hot Lead \u2014 Meeting in ~${minutesLabel} minutes**`,
       ``,
-      `**Client:** ${clientName}`,
-      `**Time (Client):** ${meetingTime}`,
+      `**Client:** ${clientName || 'Unknown client'}`,
     ];
 
-    if (meetingTimeIndia) {
+    if (isUsable(meetingTime)) {
+      lines.push(`**Time (Client):** ${meetingTime}`);
+    }
+    if (isUsable(meetingTimeIndia)) {
       lines.push(`**Time (India):** ${meetingTimeIndia}`);
     }
 
     lines.push(
-      `**Link:** ${meetingLink}`,
+      `**Link:** ${meetingLink || 'Not provided'}`,
       claimedLine,
       ``,
       `BDA team, confirm attendance by typing **"I'm in."** Let's close this.`,

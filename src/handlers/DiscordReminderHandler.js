@@ -2,11 +2,23 @@
 
 const ScheduledDiscordMeetReminder = require('../models/ScheduledDiscordMeetReminder');
 const ReminderError = require('../models/ReminderError');
+const CampaignBooking = require('../models/CampaignBooking');
 const { minutesBefore, formatMeetingTime } = require('../utils/timezone');
 const {
   DISCORD_MEET_REMINDER_OFFSET_MINUTES,
   REMINDER_DRIFT_WARN_MS,
 } = require('../config/env');
+
+// Treat null/empty/Unknown variants as missing
+function isUsableTime(v) {
+  return (
+    v != null &&
+    v !== '' &&
+    v !== 'Unknown' &&
+    !String(v).startsWith('Unknown') &&
+    v !== 'undefined'
+  );
+}
 
 class DiscordReminderHandler {
   /**
@@ -39,6 +51,11 @@ class DiscordReminderHandler {
     }
     const reminderId = `discord_${bookingId}_${Date.now()}`;
 
+    // Pre-compute formatted times NOW so the send path never has to recompute
+    // and never prints "Unknown" for legitimate bookings.
+    const precomputedClientTime = formatMeetingTime(meetingStartISO, inviteeTimezone || 'Asia/Kolkata');
+    const precomputedIndiaTime = formatMeetingTime(meetingStartISO, 'Asia/Kolkata');
+
     const doc = await ScheduledDiscordMeetReminder.create({
       reminderId,
       bookingId,
@@ -50,6 +67,8 @@ class DiscordReminderHandler {
       inviteeTimezone,
       status: 'pending',
       source,
+      precomputedClientTime,
+      precomputedIndiaTime,
     });
 
     this._log.info({ reminderId, bookingId, scheduledFor }, 'Discord reminder scheduled');
@@ -77,20 +96,50 @@ class DiscordReminderHandler {
     }
 
     const deliveryDriftMs = Date.now() - new Date(claimed.scheduledFor).getTime();
-    const formattedTime = formatMeetingTime(
-      claimed.meetingStartISO,
-      claimed.inviteeTimezone || 'Asia/Kolkata',
-    );
 
     try {
-      const minutesUntil = Math.max(0, Math.round((new Date(claimed.meetingStartISO).getTime() - Date.now()) / 60000));
-      const formattedIndia = formatMeetingTime(claimed.meetingStartISO, 'Asia/Kolkata');
+      // Resolve meeting start with 3-tier fallback so we can always compute "minutes until":
+      // 1. claimed.meetingStartISO  2. booking.scheduledEventStartTime  3. scheduledFor + offset
+      let booking = null;
+      if (claimed.bookingId) {
+        try {
+          booking = await CampaignBooking.findOne({ bookingId: claimed.bookingId }).lean();
+        } catch (_) { /* non-fatal */ }
+      }
+
+      const rawStart = claimed.meetingStartISO ? new Date(claimed.meetingStartISO) : null;
+      const effectiveMeetingStart =
+        (rawStart && !isNaN(rawStart.getTime()))
+          ? rawStart
+          : (booking?.scheduledEventStartTime)
+            ? new Date(booking.scheduledEventStartTime)
+            : (claimed.scheduledFor)
+              ? new Date(new Date(claimed.scheduledFor).getTime() + DISCORD_MEET_REMINDER_OFFSET_MINUTES * 60 * 1000)
+              : null;
+
+      const minutesUntil = effectiveMeetingStart
+        ? Math.max(0, Math.round((effectiveMeetingStart.getTime() - Date.now()) / 60000))
+        : DISCORD_MEET_REMINDER_OFFSET_MINUTES;
+
+      // Prefer pre-computed times stored at schedule time. Fall back to runtime
+      // formatting only for legacy rows that don't have them.
+      const clientTz = claimed.inviteeTimezone || booking?.inviteeTimezone || 'Asia/Kolkata';
+      const meetingTime = isUsableTime(claimed.precomputedClientTime)
+        ? claimed.precomputedClientTime
+        : formatMeetingTime(effectiveMeetingStart, clientTz);
+      const meetingTimeIndia = isUsableTime(claimed.precomputedIndiaTime)
+        ? claimed.precomputedIndiaTime
+        : formatMeetingTime(effectiveMeetingStart, 'Asia/Kolkata');
+
+      const claimedBy = booking?.claimedBy?.name || booking?.claimedBy?.email || null;
+
       await this._discord.sendMeetReminder({
         clientName: claimed.clientName,
-        meetingTime: formattedTime,
-        meetingTimeIndia: formattedIndia,
+        meetingTime,
+        meetingTimeIndia,
         meetingLink: claimed.meetingLink,
         minutesUntil,
+        claimedBy,
       });
 
       await ScheduledDiscordMeetReminder.findOneAndUpdate(
