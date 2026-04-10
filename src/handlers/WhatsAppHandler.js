@@ -5,19 +5,20 @@ const ReminderError = require('../models/ReminderError');
 const { minutesBefore, formatMeetingTime } = require('../utils/timezone');
 const { REMINDER_DRIFT_WARN_MS } = require('../config/env');
 
+// We only send a single 5-minute-before reminder to clients now.
+// 2hour / 24hour have been intentionally removed from the schedule paths.
 const REMINDER_OFFSETS = {
   '5min': 5,
-  '2hour': 120,
-  '24hour': 1440,
   'noshow': 0,
 };
 
-// All reminder types use the same WATI template (matching parent app)
+// All supported reminder types use the same WATI template
+// (template name is overridable via WATI_REMINDER_TEMPLATE env var).
+const REMINDER_TEMPLATE =
+  process.env.WATI_REMINDER_TEMPLATE || 'flashfire_appointment_reminder';
 const TEMPLATE_MAP = {
-  '5min': 'flashfire_appointment_reminder',
-  '2hour': 'flashfire_appointment_reminder',
-  '24hour': 'flashfire_appointment_reminder',
-  'noshow': 'flashfire_appointment_reminder',
+  '5min': REMINDER_TEMPLATE,
+  'noshow': REMINDER_TEMPLATE,
 };
 
 class WhatsAppHandler {
@@ -125,7 +126,7 @@ class WhatsAppHandler {
       claimed.rescheduleLink || 'https://calendly.com',          // {{5}}
     ];
 
-    const templateName = TEMPLATE_MAP[claimed.reminderType] || 'meeting_reminder_5min';
+    const templateName = TEMPLATE_MAP[claimed.reminderType] || REMINDER_TEMPLATE;
 
     try {
       const watiResponse = await this._wati.sendTemplateMessage({

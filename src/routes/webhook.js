@@ -211,15 +211,15 @@ function webhookRoutes(app, opts) {
       );
     }
 
-    // 2. Schedule WhatsApp reminders (5min, 2hour, 24hour)
+    // 2. Schedule WhatsApp 5-min reminder ONLY.
+    //    We intentionally do NOT schedule 2hour / 24hour anymore — clients
+    //    only receive a single "your meeting is in 5 minutes" WATI reminder.
     if (normalizedPhone && isValidPhone(normalizedPhone)) {
-      for (const reminderType of ['5min', '2hour', '24hour']) {
-        tasks.push(
-          whatsAppHandler.schedule({ phoneNumber: normalizedPhone, ...common, reminderType, timezone: inviteeTimezone }).then(doc => {
-            if (doc) scheduler.scheduleWhatsApp(doc);
-          })
-        );
-      }
+      tasks.push(
+        whatsAppHandler.schedule({ phoneNumber: normalizedPhone, ...common, reminderType: '5min', timezone: inviteeTimezone }).then(doc => {
+          if (doc) scheduler.scheduleWhatsApp(doc);
+        })
+      );
     }
 
     // 3. Schedule Discord meeting reminder

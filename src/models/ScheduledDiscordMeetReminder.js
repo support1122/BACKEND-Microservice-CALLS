@@ -9,6 +9,10 @@ const scheduledDiscordMeetReminderSchema = new mongoose.Schema({
   scheduledFor: { type: Date, required: true, index: true },
   meetingLink: String,
   inviteeTimezone: String,
+  // Pre-computed at schedule time so the send path never has to recompute
+  // and never prints "Unknown" for legitimate bookings.
+  precomputedClientTime: { type: String, default: null },
+  precomputedIndiaTime: { type: String, default: null },
   status: {
     type: String,
     enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
