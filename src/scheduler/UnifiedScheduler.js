@@ -180,10 +180,20 @@ class UnifiedScheduler {
     const existing = this._timers.get(key);
     if (existing) clearTimeout(existing.timerId);
 
+    // Node setTimeout uses int32 ms; delays > ~24.85 days fire immediately.
+    // Re-arm in chunks so far-future reminders wait until their real scheduledFor.
+    const MAX_TIMEOUT_MS = 2_147_483_647;
+
     if (delay <= 0) {
       // Fire immediately
       this._timers.set(key, { timerId: null, type, scheduledFor: scheduledDate });
       wrappedHandler();
+    } else if (delay > MAX_TIMEOUT_MS) {
+      const timerId = setTimeout(() => {
+        this._timers.delete(key);
+        this._setTimer(type, id, scheduledFor, handler);
+      }, MAX_TIMEOUT_MS);
+      this._timers.set(key, { timerId, type, scheduledFor: scheduledDate });
     } else {
       const timerId = setTimeout(wrappedHandler, delay);
       this._timers.set(key, { timerId, type, scheduledFor: scheduledDate });

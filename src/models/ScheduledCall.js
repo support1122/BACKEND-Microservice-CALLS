@@ -23,6 +23,8 @@ const scheduledCallSchema = new mongoose.Schema({
   errorMessage: String,
   attempts: { type: Number, default: 0 },
   maxAttempts: { type: Number, default: 3 },
+  processedAt: { type: Date, default: null },
+  completedAt: { type: Date, default: null },
   statusHistory: [{
     status: String,
     answeredBy: String,

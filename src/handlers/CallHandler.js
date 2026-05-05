@@ -66,7 +66,7 @@ class CallHandler {
     // Atomic claim
     const claimed = await ScheduledCall.findOneAndUpdate(
       { callId, status: 'pending' },
-      { $set: { status: 'processing' }, $inc: { attempts: 1 } },
+      { $set: { status: 'processing', processedAt: new Date() }, $inc: { attempts: 1 } },
       { new: true },
     );
 
@@ -96,6 +96,7 @@ class CallHandler {
         {
           $set: {
             status: 'completed',
+            completedAt: new Date(),
             twilioCallSid: result.callSid || null,
             deliveryDriftMs,
           },
