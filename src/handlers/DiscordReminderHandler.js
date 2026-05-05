@@ -86,7 +86,7 @@ class DiscordReminderHandler {
     // Atomic claim
     const claimed = await ScheduledDiscordMeetReminder.findOneAndUpdate(
       { reminderId, status: 'pending' },
-      { $set: { status: 'processing' }, $inc: { attempts: 1 } },
+      { $set: { status: 'processing', processedAt: new Date() }, $inc: { attempts: 1 } },
       { new: true },
     );
 
@@ -147,6 +147,7 @@ class DiscordReminderHandler {
         {
           $set: {
             status: 'completed',
+            completedAt: new Date(),
             deliveryDriftMs,
           },
         },

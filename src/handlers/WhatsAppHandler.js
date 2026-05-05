@@ -98,7 +98,7 @@ class WhatsAppHandler {
     // Atomic claim
     const claimed = await ScheduledWhatsAppReminder.findOneAndUpdate(
       { reminderId, status: 'pending' },
-      { $set: { status: 'processing' }, $inc: { attempts: 1 } },
+      { $set: { status: 'processing', processedAt: new Date() }, $inc: { attempts: 1 } },
       { new: true },
     );
 
@@ -143,6 +143,7 @@ class WhatsAppHandler {
         {
           $set: {
             status: 'completed',
+            completedAt: new Date(),
             watiResponse,
             deliveryDriftMs,
           },
