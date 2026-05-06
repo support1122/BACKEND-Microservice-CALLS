@@ -95,6 +95,25 @@ class DiscordReminderHandler {
       return;
     }
 
+    // Fallback dedupe: if a sibling row for the same booking+meeting already completed
+    // (i.e. main backend dispatched), cancel this one and skip.
+    if (claimed.bookingId && claimed.meetingStartISO) {
+      const sibling = await ScheduledDiscordMeetReminder.findOne({
+        _id: { $ne: claimed._id },
+        bookingId: claimed.bookingId,
+        meetingStartISO: claimed.meetingStartISO,
+        status: 'completed',
+      }).lean();
+      if (sibling) {
+        await ScheduledDiscordMeetReminder.findOneAndUpdate(
+          { _id: claimed._id },
+          { $set: { status: 'cancelled', errorMessage: `sibling row ${sibling.reminderId} already sent (main backend dispatched)` } },
+        );
+        this._log.info({ reminderId, sibling: sibling.reminderId }, 'Discord reminder skipped — main backend already dispatched');
+        return;
+      }
+    }
+
     const deliveryDriftMs = Date.now() - new Date(claimed.scheduledFor).getTime();
 
     try {

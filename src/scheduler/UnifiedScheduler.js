@@ -8,6 +8,10 @@ const {
   SCHEDULER_STUCK_PROCESSING_MS,
 } = require('../config/env');
 
+// Microservice acts as fallback for main backend. Defer dispatch by 2 min so
+// main backend (canonical) fires first; we only fire if main left the row 'pending'.
+const FALLBACK_DELAY_MS = 2 * 60 * 1000;
+
 class UnifiedScheduler {
   /**
    * @param {Object} deps
@@ -161,7 +165,8 @@ class UnifiedScheduler {
 
     const key = `${type}:${id}`;
     const scheduledDate = new Date(scheduledFor);
-    const delay = scheduledDate.getTime() - Date.now();
+    // Effective fire time = canonical scheduledFor + fallback delay.
+    const delay = scheduledDate.getTime() + FALLBACK_DELAY_MS - Date.now();
 
     const wrappedHandler = async () => {
       this._timers.delete(key);
@@ -207,8 +212,11 @@ class UnifiedScheduler {
   /* ------------------------------------------------------------------ */
 
   async _safetyNetPoll() {
-    const now = new Date();
-    const query = { status: 'pending', scheduledFor: { $lte: now } };
+    // Only consider rows whose canonical scheduledFor is at least FALLBACK_DELAY_MS in the past.
+    // This is the fallback window: main backend has had its chance; if status is still 'pending',
+    // main never dispatched and we step in.
+    const cutoff = new Date(Date.now() - FALLBACK_DELAY_MS);
+    const query = { status: 'pending', scheduledFor: { $lte: cutoff } };
 
     const [calls, waReminders, discordReminders] = await Promise.all([
       ScheduledCall.find(query).lean(),

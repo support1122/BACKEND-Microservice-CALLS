@@ -107,6 +107,25 @@ class WhatsAppHandler {
       return;
     }
 
+    // Fallback dedupe: skip if main backend already sent for this booking+meeting+reminderType.
+    if (claimed.bookingId && claimed.meetingStartISO) {
+      const sibling = await ScheduledWhatsAppReminder.findOne({
+        _id: { $ne: claimed._id },
+        bookingId: claimed.bookingId,
+        meetingStartISO: claimed.meetingStartISO,
+        reminderType: claimed.reminderType,
+        status: 'completed',
+      }).lean();
+      if (sibling) {
+        await ScheduledWhatsAppReminder.findOneAndUpdate(
+          { _id: claimed._id },
+          { $set: { status: 'cancelled', errorMessage: `sibling row ${sibling.reminderId} already sent (main backend dispatched)` } },
+        );
+        this._log.info({ reminderId, sibling: sibling.reminderId }, 'WA reminder skipped — main backend already dispatched');
+        return;
+      }
+    }
+
     const deliveryDriftMs = Date.now() - new Date(claimed.scheduledFor).getTime();
     let meetingTimeWithTimezone = formatMeetingTime(
       claimed.meetingStartISO,
