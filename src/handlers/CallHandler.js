@@ -75,6 +75,24 @@ class CallHandler {
       return;
     }
 
+    // Fallback dedupe: skip if main backend already placed call for this booking+meeting.
+    if (claimed.bookingId && claimed.meetingStartISO) {
+      const sibling = await ScheduledCall.findOne({
+        _id: { $ne: claimed._id },
+        bookingId: claimed.bookingId,
+        meetingStartISO: claimed.meetingStartISO,
+        status: 'completed',
+      }).lean();
+      if (sibling) {
+        await ScheduledCall.findOneAndUpdate(
+          { _id: claimed._id },
+          { $set: { status: 'cancelled', errorMessage: `sibling row ${sibling.callId} already placed (main backend dispatched)` } },
+        );
+        this._log.info({ callId, sibling: sibling.callId }, 'Call skipped — main backend already dispatched');
+        return;
+      }
+    }
+
     const deliveryDriftMs = Date.now() - new Date(claimed.scheduledFor).getTime();
 
     try {
