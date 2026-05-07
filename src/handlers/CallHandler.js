@@ -75,20 +75,20 @@ class CallHandler {
       return;
     }
 
-    // Fallback dedupe: skip if main backend already placed call for this booking+meeting.
-    if (claimed.bookingId && claimed.meetingStartISO) {
-      const sibling = await ScheduledCall.findOne({
-        _id: { $ne: claimed._id },
-        bookingId: claimed.bookingId,
-        meetingStartISO: claimed.meetingStartISO,
-        status: 'completed',
-      }).lean();
-      if (sibling) {
+    // Single-winner claim on CampaignBooking.bdaCallPlacedAt.
+    if (claimed.bookingId) {
+      const CampaignBooking = require('../models/CampaignBooking');
+      const bookingClaim = await CampaignBooking.findOneAndUpdate(
+        { bookingId: claimed.bookingId, bdaCallPlacedAt: null },
+        { $set: { bdaCallPlacedAt: new Date(), bdaCallPlacedBy: 'microservice' } },
+        { new: false },
+      );
+      if (!bookingClaim) {
         await ScheduledCall.findOneAndUpdate(
           { _id: claimed._id },
-          { $set: { status: 'cancelled', errorMessage: `sibling row ${sibling.callId} already placed (main backend dispatched)` } },
+          { $set: { status: 'cancelled', errorMessage: 'bdaCallPlacedAt already set by main backend' } },
         );
-        this._log.info({ callId, sibling: sibling.callId }, 'Call skipped — main backend already dispatched');
+        this._log.info({ callId, bookingId: claimed.bookingId }, 'Call skipped — main backend already dispatched');
         return;
       }
     }

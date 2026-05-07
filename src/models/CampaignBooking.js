@@ -16,7 +16,14 @@ const campaignBookingSchema = new mongoose.Schema({
   calendlyEventUri: String,
   calendlyMeetLink: String,
   googleMeetCode: String,
-  claimedBy: String
+  claimedBy: String,
+  // Single-winner dispatch flags. Atomic claim via { field: null } → { $set: { field: now } }.
+  bdaDiscordReminderSentAt: { type: Date, default: null, index: true },
+  bdaDiscordReminderSentBy: { type: String, default: null },
+  whatsappReminderSentAt: { type: Date, default: null },
+  whatsappReminderSentBy: { type: String, default: null },
+  bdaCallPlacedAt: { type: Date, default: null },
+  bdaCallPlacedBy: { type: String, default: null }
 }, { timestamps: true });
 
 module.exports = mongoose.model('CampaignBooking', campaignBookingSchema, 'campaignbookings');
