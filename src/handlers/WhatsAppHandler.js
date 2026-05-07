@@ -107,21 +107,20 @@ class WhatsAppHandler {
       return;
     }
 
-    // Fallback dedupe: skip if main backend already sent for this booking+meeting+reminderType.
-    if (claimed.bookingId && claimed.meetingStartISO) {
-      const sibling = await ScheduledWhatsAppReminder.findOne({
-        _id: { $ne: claimed._id },
-        bookingId: claimed.bookingId,
-        meetingStartISO: claimed.meetingStartISO,
-        reminderType: claimed.reminderType,
-        status: 'completed',
-      }).lean();
-      if (sibling) {
+    // Single-winner claim on CampaignBooking.whatsappReminderSentAt.
+    if (claimed.bookingId) {
+      const CampaignBooking = require('../models/CampaignBooking');
+      const bookingClaim = await CampaignBooking.findOneAndUpdate(
+        { bookingId: claimed.bookingId, whatsappReminderSentAt: null },
+        { $set: { whatsappReminderSentAt: new Date(), whatsappReminderSentBy: 'microservice' } },
+        { new: false },
+      );
+      if (!bookingClaim) {
         await ScheduledWhatsAppReminder.findOneAndUpdate(
           { _id: claimed._id },
-          { $set: { status: 'cancelled', errorMessage: `sibling row ${sibling.reminderId} already sent (main backend dispatched)` } },
+          { $set: { status: 'cancelled', errorMessage: 'whatsappReminderSentAt already set by main backend' } },
         );
-        this._log.info({ reminderId, sibling: sibling.reminderId }, 'WA reminder skipped — main backend already dispatched');
+        this._log.info({ reminderId, bookingId: claimed.bookingId }, 'WA reminder skipped — main backend already dispatched');
         return;
       }
     }
